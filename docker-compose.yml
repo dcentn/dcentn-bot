@@ -30,7 +30,7 @@ services:
       - APP_SETTINGS=project.server.config.DevelopmentConfig
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - SCRAPER_API_KEY=32d95604e357da110bce18642ca463f2
+      - SCRAPER_API_KEY=32d95604e357da110bce18
     depends_on:
       - web
       - redis

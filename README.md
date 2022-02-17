@@ -42,6 +42,10 @@ Trigger a new task:
 Check the status:
  - $ curl http://localhost:5004/tasks/<TASK_ID>/
 
+**Reports & Logs**
+ - reports can be found under reports folder created once you run the app
+ - logs can be found in the logs folder in the project directory 
+
 **TODO**
  - complete tests
  - add crawlers for GH search page
