@@ -78,7 +78,7 @@ def get_all_projects(pages, _topic):
             # REDIS CASH #
             field = f'{_topic}_{page}'
             value = json.dumps(_master_list)
-            db.set(field, value)
+            db.set(field, value, ex=7200)  # ttl 2 hours
 
             # add delay to the crawl. random is used to vary crawl delay
             time.sleep(random.randint(1, 3))
