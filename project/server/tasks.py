@@ -8,7 +8,6 @@ import datetime
 from celery import Celery
 from celery.utils.log import get_task_logger
 
-import pandas as pd
 import random
 import requests
 from bs4 import BeautifulSoup

@@ -6,6 +6,15 @@ Generates a report that contains project and contributor data for a specific top
 
 Check out the [post](https://testdriven.io/blog/flask-and-celery/).
 
+### Technologies:
+ - Docker
+ - Flask
+ - Celery
+ - Redis
+ - Flower
+ - Pandas
+ - BeautifulSoup
+
 ### Dependencies:
 Required to run this program
  - Docker
