@@ -2,7 +2,7 @@
 
 Generates a report that contains project and contributor data for a specific topic 
 
-## Project structure is based on this project:
+### Project structure is based on this project:
 
 Check out the [post](https://testdriven.io/blog/flask-and-celery/).
 
