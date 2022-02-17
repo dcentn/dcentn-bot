@@ -45,7 +45,7 @@ _Add Scraperapi.com API KEY to docker-compose file_
 **Commandline:**
 
 Trigger a new task:
- - $ curl http://localhost:5004/tasks -H "Content-Type: application/json" --data '{"type": 0}'
+ - $ curl http://localhost:5004/tasks -H "Content-Type: application/json" --data '{"topic": "gig"}'
 
 
 Check the status:
