@@ -1,8 +1,8 @@
 from celery.result import AsyncResult
 from flask import render_template, Blueprint, jsonify, request
-from project.server.tasks import create_task
+from project.server.tasks import project_task, contributor_task, contract_finder_task
 
-from .models import TopicData
+from .models import TopicData, BuildDatabase
 
 main_blueprint = Blueprint("main", __name__,)
 
@@ -16,7 +16,15 @@ def home():
 def run_task():
     content = request.json
     topic = content["topic"]
-    task = create_task.delay(topic)
+    task = project_task.delay(topic)
+    return jsonify({"task_id": task.id}), 202
+
+
+@main_blueprint.route("/contributor-tasks", methods=["POST"])
+def run_contributor_task():
+    content = request.json
+    topic = content["topic"]
+    task = contributor_task.delay(topic)
     return jsonify({"task_id": task.id}), 202
 
 
@@ -38,6 +46,7 @@ def get_status(task_id):
 
 @main_blueprint.route("/topic/<name>", methods=["GET"])
 def get_topic(name):
+    # BuildDatabase().process_report()
     total, pages = TopicData(name).get_topic_page_count()
     mes = 'Total Listings Found ' + str(total) + '; Pages ' + str(pages)
     print(mes)
@@ -47,3 +56,11 @@ def get_topic(name):
         "results": total
     }
     return jsonify(result)
+
+
+@main_blueprint.route("/contract-finder", methods=["POST"])
+def run_contract_finder_task():
+    content = request.json
+    _contract_type = content["type"]
+    task = contract_finder_task.delay("sol")
+    return jsonify({"task_id": task.id}), 202

@@ -78,9 +78,10 @@ def get_all_projects(pages, _topic):
             # REDIS CASH #
             field = f'{_topic}_{page}'
             value = json.dumps(_master_list)
-            db.set(field, value, ex=7200)  # ttl 2 hours
+            db.set(field, value, ex=86400)  # ttl 2 hours
 
             # add delay to the crawl. random is used to vary crawl delay
+            logger.info(f'project page {page}')
             time.sleep(random.randint(1, 3))
 
         except Exception as e:
@@ -104,7 +105,6 @@ def get_soup_for_topic_projects(page, _topic):
     if response.status_code == 200:
         return BeautifulSoup(response.text, 'html.parser')
     else:
-
         return None
 
 
@@ -202,6 +202,8 @@ def build_file(topic):
             value = db.get(k)
             j = json.loads(value)
 
+            logger.info(f'get contributors {k}')
+
             # iterate through each page - each iteration is a project
             for _project in j:
                 _contributors_url = _project["Contributors_URL"]
@@ -226,16 +228,313 @@ def build_file(topic):
             write.writerows(master_matched_list_r)
 
 
-@celery.task(name="create_task")
-def create_task(topic):
+def build_contributor_file(topic):
+    absolute_path = os.path.dirname(os.path.abspath(__file__))
+
+    timestamp = datetime.datetime.now().timestamp()
+    # filename = absolute_path + f'/reports/github_contributors_{topic}_{int(round(timestamp))}.csv'
+    filename = absolute_path + f'/reports/github_contributors_{int(round(timestamp))}.csv'
+
+    headers = ['Name of topic', 'Name of org', 'URL of org', 'Name of project', 'Url of project', 'Contributor',
+               'Url of contributor', 'Name', 'Additional Name', 'Website', 'Home Location', 'Works For', 'Email',
+               'Twitter Link', 'Twitter Handle']
+
+    with open(filename, 'a+', newline='') as f:
+        write = csv.writer(f)
+        write.writerow(headers)
+
+        keys = f'contributor_*'
+        all_keys = db.keys(keys)
+
+        # each iteration is a page - update spreadsheet with each page
+        for k in all_keys:
+            master_matched_list_r = []
+            value = db.get(k)
+            _contributor = json.loads(value)
+
+            temp_ = [
+                topic,
+                _contributor["Name_of_org"],
+                _contributor["URL_of_org"],
+                _contributor["Name_of_project"],
+                _contributor["URL_of_project"],
+                _contributor["Contributor"],
+                _contributor["Contributor_URL"],
+                _contributor["Name"],
+                _contributor["Additional_Name"],
+                _contributor["Website"],
+                _contributor["Home_Location"],
+                _contributor["Works_For"],
+                _contributor["Email"],
+                _contributor["Twitter_Link"],
+                _contributor["Twitter_Handle"],
+            ]
+
+            logger.info(f'write record: {k}')
+            write.writerow(temp_)
+
+            #master_matched_list_r.append(temp_)
+            #write.writerow(master_matched_list_r)
+
+            # add delay to the crawl. random is used to vary crawl delay
+            #time.sleep(random.randint(1, 2))
+
+        # write all contributors to a spreadsheet
+        #write.writerows(master_matched_list_r)
+
+
+def get_contributor_details(url):
+    _contributor_details = {
+        "Name": "",
+        "Additional_Name": "",
+        "Website": "",
+        "Home_Location": "",
+        "Works_For": "",
+        "Email": "",
+        "Twitter_Link": "",
+        "Twitter_Handle": ""}
+
+    try:
+        ua = pyuser_agent.UA()
+
+        headers = {
+            'User-Agent': ua.random,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+        }
+
+        payload = {'api_key': api_key, 'url': url, 'keep_headers': 'true'}
+        response = requests.get('http://api.scraperapi.com', params=payload, headers=headers)
+
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            name_data = soup.find('h1', class_="vcard-names")
+            if name_data is not None:
+                for _span in name_data.find_all("span"):
+                    _t = _span["itemprop"]
+                    if _t == "name":
+                        _contributor_details["Name"] = _span.text.replace('\n', '').replace('  ', '')
+                    if _t == "additionalName":
+                        _contributor_details["Additional_Name"] = _span.text.replace('\n', '').replace('  ', '')
+
+            data = soup.find('ul', class_="vcard-details")
+            if data is not None:
+                for _li in data.find_all("li"):
+                    _t = _li["itemprop"]
+                    if _t == "url":
+                        _href = _li.find('a')
+                        _contributor_details["Website"] = _href["href"]
+                    if _t == "homeLocation":
+                        _contributor_details["Home_Location"] = _li["aria-label"].replace('Home location: ', '')
+                    if _t == "worksFor":
+                        _contributor_details["Works_For"] = _li["aria-label"].replace('Organization: ', '')
+                    if _t == "email":
+                        _contributor_details["Email"] = _li["aria-label"]
+                    if _t == "twitter":
+                        _href = _li.find('a')
+                        _contributor_details["Twitter_Link"] = _href["href"]
+                        _contributor_details["Twitter_Handle"] = _href.text.replace('\n', '').replace('  ', '')
+
+            logger.info("process..")
+            return _contributor_details
+
+        else:
+            logger.info(f'###########################')
+            logger.info(f'Bad crawl')
+            logger.info(response.status_code)
+            logger.info(response.text)
+            logger.info(url)
+            logger.info(f'###########################')
+
+            return None
+
+    except Exception as e:
+        print('Error ', e)
+        print(f'Error getting contributors')
+
+        return None
+
+
+def find_contracts_in_repo(url):
+    _contributor_details = {
+        "Name": "",
+        "Additional_Name": "",
+        "Website": "",
+        "Home_Location": "",
+        "Works_For": "",
+        "Email": "",
+        "Twitter_Link": "",
+        "Twitter_Handle": ""}
+
+    try:
+        ua = pyuser_agent.UA()
+
+        headers = {
+            'User-Agent': ua.random,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+        }
+
+        payload = {'api_key': api_key, 'url': url, 'keep_headers': 'true'}
+        response = requests.get('http://api.scraperapi.com', params=payload, headers=headers)
+
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            data = soup.find('ul', id_="tree-browser")
+            if data is not None:
+                for _li in data.find_all("li"):
+                    _t = _li["role"]
+                    if _t == "presentation":
+                        _A = _li.find('a')
+                        _href = _A["href"]
+
+                        if ".sol" in _href:
+                            _href_array = _href.split("/")
+                            _ap = len(_href_array) - 1
+                            _file = _href_array[_ap]
+                            print(_file)
+
+                        #_contributor_details["Website"] = _hrefA["href"]
+
+            logger.info("process..")
+            return _contributor_details
+
+        else:
+            logger.info(f'###########################')
+            logger.info(f'Bad crawl')
+            logger.info(response.status_code)
+            logger.info(response.text)
+            logger.info(url)
+            logger.info(f'###########################')
+
+            return None
+
+    except Exception as e:
+        print('Error ', e)
+        print(f'Error getting contributors')
+
+        return None
+
+
+def process_contributor_file(topic):
+    _contributor_list = []
+
+    filename = f'/usr/src/app/reports/github_topic_contributors_crypto_1647446085.csv'
+    with open(filename, 'r') as file:
+        reader = csv.reader(file)
+        row = 0
+        for each_row in reader:
+            contributor_dict = {}
+            topic = each_row[0]
+            contributor_dict['Name_of_org'] = each_row[1]
+            contributor_dict['URL_of_org'] = 'https:github.com/' + each_row[1]
+            contributor_dict['Name_of_project'] = each_row[2]
+            contributor_dict['URL_of_project'] = each_row[3]
+            contributor_dict['Contributor'] = each_row[4]
+            contributor_dict['Contributor_URL'] = each_row[5]
+
+            _contributor = get_contributor_details(each_row[5])
+            if _contributor is None:
+                continue
+
+            contributor_dict.update(_contributor)
+
+            # REDIS CASH #
+            field = f'contributor_{row}'
+            value = json.dumps(contributor_dict)
+            db.set(field, value, ex=86400)  # ttl 24 hours
+
+            logger.info(field)
+            row += 1
+
+            # if row == 50:
+            #     return
+
+            time.sleep(random.randint(1, 3))
+
+
+def process_contract_from_contributor_file(topic):
+    _project_list = []
+
+    filename = f'/usr/src/app/reports/github_topic_contributors_crypto_1647446085.csv'
+    with open(filename, 'r') as file:
+        reader = csv.reader(file)
+        row = 0
+        for each_row in reader:
+            if each_row[3] is None or each_row[3] == "":
+                continue
+
+            if each_row[3] in _project_list:
+                continue
+
+            _project_list.append(each_row[3])
+            print(_project_list)
+
+            # for testing
+            if row > 3:
+                continue
+
+            contract_dict = {}
+            topic = each_row[0]
+            contract_dict['Name_of_org'] = each_row[1]
+            contract_dict['URL_of_org'] = 'https:github.com/' + each_row[1]
+            contract_dict['Name_of_project'] = each_row[2]
+            contract_dict['URL_of_project'] = each_row[3]
+
+            url = f'{each_row[3]}/find/main'
+            _contract = find_contracts_in_repo(url)
+            if _contract is None:
+                continue
+
+            contract_dict.update(_contract)
+
+            # REDIS CASH #
+            field = f'contributor_{row}'
+            value = json.dumps(contract_dict)
+            db.set(field, value, ex=86400)  # ttl 24 hours
+
+            logger.info(field)
+            row += 1
+
+            time.sleep(random.randint(2, 5))
+
+
+@celery.task(name="project_task")
+def project_task(topic):
     pages_f, pages = get_topic_page_count(topic)
     mes = 'Total Listings Found ' + str(pages_f) + '; Pages ' + str(pages)
     logger.info(mes)
 
     # build projects and add to redis cache
-    get_all_projects(pages, topic)
+    get_all_projects(pages, topic)  # TODO: LIMIT TO 5 PAGES AT A TIME
 
     # get contributors and add project to spreadsheet
     build_file(topic)
+
+    return "Report Ready"
+
+
+@celery.task(name="contributor_task")
+def contributor_task(topic):
+    # from file, crawl contributor ad add to redis
+    process_contributor_file(topic)
+
+    # pull from redis and add to a new file
+    build_contributor_file("crypto")
+
+    return "Report Ready"
+
+
+@celery.task(name="contract_finder_task")
+def contract_finder_task(topic):
+    # from file, crawl contributor ad add to redis
+    process_contract_from_contributor_file(topic)
+
+    # pull from redis and add to a new file
+    #build_contributor_file("crypto")
 
     return "Report Ready"

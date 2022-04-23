@@ -1,7 +1,7 @@
-version: '3'
+version: '3.2'
 
 services:
-
+  # main web interface #
   web:
     build: .
     image: web
@@ -18,9 +18,13 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - redis
+    networks:
+      - dcentn
 
+  # celery worker #
   worker:
     build: .
+    container_name: worker
     command: celery worker --app=project.server.tasks.celery --loglevel=info --logfile=project/logs/celery.log
     volumes:
       - .:/usr/src/app
@@ -30,13 +34,17 @@ services:
       - APP_SETTINGS=project.server.config.DevelopmentConfig
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - SCRAPER_API_KEY=32d95604e357da110bce18
+      - SCRAPER_API_KEY=32d95604e357da110bce18642ca463f2
     depends_on:
       - web
       - redis
+    networks:
+      - dcentn
 
+  # flower dashboard #
   dashboard:
     build: .
+    container_name: dashboard
     command:  flower --app=project.server.tasks.celery --port=5555 --broker=redis://redis:6379/0
     ports:
       - 5556:5555
@@ -49,6 +57,40 @@ services:
       - web
       - redis
       - worker
+    networks:
+      - dcentn
 
   redis:
     image: redis:6-alpine
+    restart: always
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./db-dcentn-redis:/data
+    networks:
+      - dcentn
+
+  neo4j:
+    image: neo4j:4.4.1
+    container_name: neo4j
+    restart: always
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./db-dcentn-neo4j:/data
+    environment:
+      - NEO4J_AUTH=neo4j/dcentn
+      - NEO4J_dbms_connector_http_listen__address=:7474
+      - NEO4J_dbms_connector_bolt_listen__address=:7687
+      - NEO4J_dbms_connector_bolt_advertised__address=localhost:7687
+    networks:
+      - dcentn
+
+volumes:
+  db-dcentn-neo4j:
+  db-dcentn-redis:
+
+networks:
+  dcentn:
