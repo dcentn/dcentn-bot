@@ -357,16 +357,8 @@ def get_contributor_details(url):
         return None
 
 
-def find_contracts_in_repo(url):
-    _contributor_details = {
-        "Name": "",
-        "Additional_Name": "",
-        "Website": "",
-        "Home_Location": "",
-        "Works_For": "",
-        "Email": "",
-        "Twitter_Link": "",
-        "Twitter_Handle": ""}
+def find_contracts_in_repo(url_root, count):
+    _contracts = []
 
     try:
         ua = pyuser_agent.UA()
@@ -379,44 +371,70 @@ def find_contracts_in_repo(url):
             'Connection': 'keep-alive',
         }
 
+        # url_root = https: // api.github.com / repos / [USER] / [REPO] / git / trees /
+        # https: // api.github.com / repos / [USER] / [REPO] / git / trees / [BRANCH]?recursive = 1
+        url = f'{url_root}master?recursive=1'
         payload = {'api_key': api_key, 'url': url, 'keep_headers': 'true'}
         response = requests.get('http://api.scraperapi.com', params=payload, headers=headers)
-
         if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            data = soup.find('ul', id_="tree-browser")
-            if data is not None:
-                for _li in data.find_all("li"):
-                    _t = _li["role"]
-                    if _t == "presentation":
-                        _A = _li.find('a')
-                        _href = _A["href"]
+            _r = response.json()
+            if _r['tree'] is not None:
+                for _t in _r['tree']:
+                    _p = _t['path']
+                    if ".sol" in _p:
+                        # _contributor_details = {"path": _p}
+                        _contracts.append(_p)
 
-                        if ".sol" in _href:
-                            _href_array = _href.split("/")
-                            _ap = len(_href_array) - 1
-                            _file = _href_array[_ap]
-                            print(_file)
+                logger.info(f'1st process complete: {count}')
 
-                        #_contributor_details["Website"] = _hrefA["href"]
+                if len(_contracts) > 0:
+                    return _contracts
+                else:
+                    return None
+            else:
+                logger.info("1st process none error")
+                return None
 
-            logger.info("process..")
-            return _contributor_details
+        elif response.status_code == 404:
+            url = f'{url_root}main?recursive=1'
+            payload = {'api_key': api_key, 'url': url, 'keep_headers': 'true'}
+            response = requests.get('http://api.scraperapi.com', params=payload, headers=headers)
+            if response.status_code == 200:
+                _r = response.json()
+                if _r['tree'] is not None:
+                    for _t in _r['tree']:
+                        _p = _t['path']
+                        if ".sol" in _p:
+                            # _contributor_details = {"path": _p}
+                            _contracts.append(_p)
 
+                    logger.info(f'2nd process complete: {count}')
+
+                    if len(_contracts) > 0:
+                        return _contracts
+                    else:
+                        return None
+                else:
+                    logger.info("2nd process none error")
+                    return None
+            else:
+                logger.info(f'###########################')
+                logger.info(f'Bad second crawl')
+                logger.info(response.status_code)
+                logger.info(url_root)
+                logger.info(f'###########################')
+                return None
         else:
             logger.info(f'###########################')
-            logger.info(f'Bad crawl')
+            logger.info(f'Bad initial crawl')
             logger.info(response.status_code)
-            logger.info(response.text)
-            logger.info(url)
+            logger.info(url_root)
             logger.info(f'###########################')
-
             return None
 
     except Exception as e:
+        print(f'Error getting contracts')
         print('Error ', e)
-        print(f'Error getting contributors')
-
         return None
 
 
@@ -451,9 +469,6 @@ def process_contributor_file(topic):
             logger.info(field)
             row += 1
 
-            # if row == 50:
-            #     return
-
             time.sleep(random.randint(1, 3))
 
 
@@ -464,7 +479,17 @@ def process_contract_from_contributor_file(topic):
     with open(filename, 'r') as file:
         reader = csv.reader(file)
         row = 0
+        count = 1
         for each_row in reader:
+            # first row in file
+            if row == 0:
+                row += 1
+                continue
+
+            # for testing
+            # if row > 100:
+            #     return None
+
             if each_row[3] is None or each_row[3] == "":
                 continue
 
@@ -472,11 +497,7 @@ def process_contract_from_contributor_file(topic):
                 continue
 
             _project_list.append(each_row[3])
-            print(_project_list)
-
-            # for testing
-            if row > 3:
-                continue
+            count += 1  # unique project
 
             contract_dict = {}
             topic = each_row[0]
@@ -485,21 +506,20 @@ def process_contract_from_contributor_file(topic):
             contract_dict['Name_of_project'] = each_row[2]
             contract_dict['URL_of_project'] = each_row[3]
 
-            url = f'{each_row[3]}/find/main'
-            _contract = find_contracts_in_repo(url)
-            if _contract is None:
+            url = f'https://api.github.com/repos/{each_row[1]}/{each_row[2]}/git/trees/'
+            _contracts = find_contracts_in_repo(url, count)
+            if _contracts is None:
                 continue
 
-            contract_dict.update(_contract)
+            contract_dict['Contracts'] = _contracts
 
             # REDIS CASH #
-            field = f'contributor_{row}'
+            field = f'contract_{row}'
             value = json.dumps(contract_dict)
             db.set(field, value, ex=86400)  # ttl 24 hours
 
             logger.info(field)
-            row += 1
-
+            row += 1  # needs to be here, to ensure we count contracts that are NOT NONE
             time.sleep(random.randint(2, 5))
 
 
@@ -533,6 +553,12 @@ def contributor_task(topic):
 def contract_finder_task(topic):
     # from file, crawl contributor ad add to redis
     process_contract_from_contributor_file(topic)
+
+    keys = f'contract_*'
+    all_keys = db.keys(keys)
+    for k in all_keys:
+        value = db.get(k)
+        logger.info(value)
 
     # pull from redis and add to a new file
     #build_contributor_file("crypto")

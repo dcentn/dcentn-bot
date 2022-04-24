@@ -1,9 +1,13 @@
 import time
 import csv
+import json
+import redis
 import requests
 from neo4j import GraphDatabase
 from bs4 import BeautifulSoup
 import pyuser_agent
+
+db = redis.Redis(host='redis', port=6379, db=0)  # connect to server
 
 
 class TopicData:
@@ -111,3 +115,59 @@ class BuildDatabase:
         #     session.write_transaction(self.add_friend, "Arthur", "Merlin")
 
         #self.driver.close()
+
+
+class BuildContractDatabase:
+    def __init__(self):
+        driver = GraphDatabase.driver("neo4j://neo4j:7687", auth=("neo4j", "dcentn"))
+        self.driver = driver
+
+    def update_neo4j_data(self, t):
+        keys = f'contract_*'
+        all_keys = db.keys(keys)
+        for k in all_keys:
+            value = db.get(k)
+            _contributor = json.loads(value)
+            with self.driver.session() as session:
+                session.write_transaction(
+                  self.add_data,
+                  _contributor["Name_of_org"],
+                  _contributor["URL_of_org"],
+                  _contributor["Name_of_project"],
+                  _contributor["URL_of_project"],
+                  _contributor["Contracts"]
+                )
+
+                time.sleep(1)
+
+                self.driver.close()
+
+    @staticmethod
+    def add_data(
+        tx,
+        name_of_org,
+        url_of_org,
+        name_of_project,
+        url_of_project,
+        contracts
+    ):
+        tx.run("UNWIND $contracts as path "
+               "MERGE (o:Organization {name: $org_name, url: $org_url}) "
+               "MERGE (o)<-[:PROJECT]-(p:Project {name: $project_name, url: $project_url}) "
+               "MERGE (p)<-[:CONTRACT]-(c:Contract {path: path})",
+               org_name=name_of_org,
+               org_url=url_of_org,
+               project_name=name_of_project,
+               project_url=url_of_project,
+               contracts=contracts
+               )
+
+    def process_report(self):
+        self.update_neo4j_data("crypto")
+
+        # with self.driver.session() as session:
+        #     session.write_transaction(self.add_friend, "Arthur", "Guinevere")
+        #     session.write_transaction(self.add_friend, "Arthur", "Lancelot")
+        #     session.write_transaction(self.add_friend, "Arthur", "Merlin")
+
+        # self.driver.close()

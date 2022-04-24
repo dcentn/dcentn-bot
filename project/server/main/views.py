@@ -2,7 +2,7 @@ from celery.result import AsyncResult
 from flask import render_template, Blueprint, jsonify, request
 from project.server.tasks import project_task, contributor_task, contract_finder_task
 
-from .models import TopicData, BuildDatabase
+from .models import TopicData, BuildDatabase, BuildContractDatabase
 
 main_blueprint = Blueprint("main", __name__,)
 
@@ -64,3 +64,16 @@ def run_contract_finder_task():
     _contract_type = content["type"]
     task = contract_finder_task.delay("sol")
     return jsonify({"task_id": task.id}), 202
+
+
+@main_blueprint.route("/contract-builder", methods=["POST"])
+def run_contract_builder_task():
+    BuildContractDatabase().process_report()
+
+    result = {
+        "topic": "",
+        "pages": "",
+        "results": "",
+    }
+
+    return jsonify(result)
