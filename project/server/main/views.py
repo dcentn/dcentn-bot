@@ -12,6 +12,11 @@ def home():
     return render_template("main/home.html")
 
 
+@main_blueprint.route("/contracts", methods=["GET"])
+def contracts():
+    return render_template("main/contracts.html")
+
+
 @main_blueprint.route("/tasks", methods=["POST"])
 def run_task():
     content = request.json

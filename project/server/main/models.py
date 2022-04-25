@@ -151,10 +151,11 @@ class BuildContractDatabase:
         url_of_project,
         contracts
     ):
+        # url = f'https://raw.githubusercontent.com/{_name_of_org}/{_name_of_project}/master/{_c}'
         tx.run("UNWIND $contracts as path "
                "MERGE (o:Organization {name: $org_name, url: $org_url}) "
                "MERGE (o)<-[:PROJECT]-(p:Project {name: $project_name, url: $project_url}) "
-               "MERGE (p)<-[:CONTRACT]-(c:Contract {path: path})",
+               "MERGE (p)<-[:CONTRACT]-(c:Contract {path: path, project: $project_name, org: $org_name})",
                org_name=name_of_org,
                org_url=url_of_org,
                project_name=name_of_project,

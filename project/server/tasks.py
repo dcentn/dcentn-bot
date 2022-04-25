@@ -523,6 +523,73 @@ def process_contract_from_contributor_file(topic):
             time.sleep(random.randint(2, 5))
 
 
+def get_contract(json_string, counter):
+    _contracts = []
+
+    # if counter > 2:
+    #     return None
+
+    try:
+        _contributor = json.loads(json_string)
+
+        _name_of_org = _contributor["Name_of_org"]
+        _name_of_project = _contributor["Name_of_project"]
+        _contracts = _contributor["Contracts"]
+
+        for _c in _contracts:
+            ua = pyuser_agent.UA()
+            headers = {
+                'User-Agent': ua.random,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+            }
+
+            # https://raw.githubusercontent.com/amisolution/ERC20-AMIS/master/contracts/OnChainOrderBookV013b.sol
+            url = f'https://raw.githubusercontent.com/{_name_of_org}/{_name_of_project}/master/{_c}'
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                absolute_path = os.path.dirname(os.path.abspath(__file__))
+                _file = _c.replace("/", "%")
+                filename = absolute_path + f'/reports/{_file}'
+
+                with open(filename, 'wb') as f:
+                    f.write(response.content)
+
+            elif response.status_code == 404:
+                url = f'https://raw.githubusercontent.com/{_name_of_org}/{_name_of_project}/main/{_c}'
+                response = requests.get(url, headers=headers)
+                if response.status_code == 200:
+                    absolute_path = os.path.dirname(os.path.abspath(__file__))
+                    _file = _c.replace("/", "%")
+                    filename = absolute_path + f'/reports/{_file}'
+
+                    with open(filename, 'wb') as f:
+                        f.write(response.content)
+                else:
+                    logger.info(f'###########################')
+                    logger.info(f'Bad contract crawl')
+                    logger.info(response.status_code)
+                    logger.info(url)
+                    logger.info(f'###########################')
+                    continue
+            else:
+                logger.info(f'###########################')
+                logger.info(f'Bad contract crawl')
+                logger.info(response.status_code)
+                logger.info(url)
+                logger.info(f'###########################')
+                continue
+
+            time.sleep(1)
+
+    except Exception as e:
+        print(f'Error getting contracts')
+        print('Error ', e)
+        return None
+
+
 @celery.task(name="project_task")
 def project_task(topic):
     pages_f, pages = get_topic_page_count(topic)
@@ -552,13 +619,19 @@ def contributor_task(topic):
 @celery.task(name="contract_finder_task")
 def contract_finder_task(topic):
     # from file, crawl contributor ad add to redis
-    process_contract_from_contributor_file(topic)
+    # process_contract_from_contributor_file(topic)
 
     keys = f'contract_*'
     all_keys = db.keys(keys)
+
+    counter = 1
     for k in all_keys:
         value = db.get(k)
-        logger.info(value)
+        get_contract(value, counter)
+        # logger.info(value)
+
+        counter += 1
+        time.sleep(random.randint(1, 3))
 
     # pull from redis and add to a new file
     #build_contributor_file("crypto")
